@@ -5,7 +5,7 @@ MODULE Finder;	(** portable *) (* ejz 3.1.95 / jm - adapted for ver 1.6 / ps ext
 
 	IMPORT
 		Input,  Objects, Fonts, Display, Printer, Display3, Printer3, Pictures, Viewers, Texts, Oberon, Effects,
-		Gadgets, Views, ListRiders, ListGadgets, Documents, Desktops;
+		Gadgets, Views, ListRiders, ListGadgets, Documents, Desktops, Files, Modules, FileDir, Root;
 
 	CONST
 		ListModel = "ListModels.NewList";
@@ -47,6 +47,7 @@ MODULE Finder;	(** portable *) (* ejz 3.1.95 / jm - adapted for ver 1.6 / ps ext
 	VAR
 		pict: Pictures.Picture;
 		templates, last: Template;
+		dropped: Template;  (* polpo: templates added by dropping a document on a finder, kept when the list is made anew *)
 		methods: ListGadgets.Method;
 		W: Texts.Writer;
 
@@ -126,6 +127,8 @@ MODULE Finder;	(** portable *) (* ejz 3.1.95 / jm - adapted for ver 1.6 / ps ext
 		Display.Broadcast(D)
 	END InsertFrame;
 
+	PROCEDURE ^ UpdateTemplates*;
+
 	PROCEDURE ListDocs (F: Frame; context: Display.Frame): Display.Frame;
 		VAR
 			list: ListGadgets.Frame;
@@ -133,7 +136,7 @@ MODULE Finder;	(** portable *) (* ejz 3.1.95 / jm - adapted for ver 1.6 / ps ext
 			e: Entry; s: Separator;
 			t: Template;
 			W, R: ListRiders.Rider;
-			maxW, addW, strW, strH, strDsr: INTEGER;
+			maxW, addW, strW, strH, strDsr, total: INTEGER;  (* polpo: total, the height of the lines *)
 			inserted: BOOLEAN;
 			A: Objects.AttrMsg;
 			L: Objects.LinkMsg;
@@ -149,7 +152,7 @@ MODULE Finder;	(** portable *) (* ejz 3.1.95 / jm - adapted for ver 1.6 / ps ext
 		L.id := Objects.set; L.name := "Model"; L.obj := Gadgets.CreateObject(ListModel); list.handle(list, L);
 		A.id := Objects.set; A.class := Objects.Bool; A.name := "Sorted"; A.b := FALSE; L.obj.handle(L.obj, A);
 		C.R := NIL; L.obj.handle(L.obj, C); W := C.R;
-		maxW := F.W; addW := 16 + 2 + 2 + list.left + list.right;
+		maxW := F.W; addW := 16 + 2 + 2 + list.left + list.right; total := 0;
 
 		(* add open docs *)
 		frame := context.dsc; inserted := FALSE;
@@ -162,12 +165,13 @@ MODULE Finder;	(** portable *) (* ejz 3.1.95 / jm - adapted for ver 1.6 / ps ext
 				ELSE COPY(doc(Documents.Document).name, e.s)
 				END;
 				Display3.StringSize(e.s, list.fnt, strW, strH, strDsr); INC(strW, addW);
+				IF (e.doc # NIL) & (strH < 18) THEN INC(total, 18) ELSE INC(total, strH) END;
 				IF strW > maxW THEN maxW := strW END;
 				W.do.Write(W, e)
 			END;
 			frame := frame.next
 		END;
-		IF inserted THEN NEW(s); W.do.Write(W, s) END;
+		IF inserted THEN NEW(s); W.do.Write(W, s); INC(total, 6) END;
 
 		(* add minimized docs *)
 		R := F.R; R.do.Set(R, 0); inserted := FALSE;
@@ -176,22 +180,27 @@ MODULE Finder;	(** portable *) (* ejz 3.1.95 / jm - adapted for ver 1.6 / ps ext
 			NEW(e);
 			e.doc := R.d(Entry).doc; COPY(R.d(Entry).s, e.s); e.open := FALSE;
 			Display3.StringSize(e.s, list.fnt, strW, strH, strDsr); INC(strW, addW);
+			IF (e.doc # NIL) & (strH < 18) THEN INC(total, 18) ELSE INC(total, strH) END;
 			IF strW > maxW THEN maxW := strW END;
 			W.do.Write(W, e);
 			R.do.Set(R, R.do.Pos(R)+1)		
 		END;
-		IF inserted THEN NEW(s); W.do.Write(W, s) END;
+		IF inserted THEN NEW(s); W.do.Write(W, s); INC(total, 6) END;
 
 		(* add doc templates *)
+		UpdateTemplates;  (* polpo: what is installed now *)
 		t := templates;
 		WHILE t # NIL DO
 			NEW(e); e.doc := NIL; e.open := FALSE; COPY(t.name, e.s);
 			Display3.StringSize(e.s, list.fnt, strW, strH, strDsr); INC(strW, addW);
+			IF (e.doc # NIL) & (strH < 18) THEN INC(total, 18) ELSE INC(total, strH) END;
 			IF strW > maxW THEN maxW := strW END;
 			W.do.Write(W, e);
 			t := t.next
 		END;
 		list.W := maxW;
+		list.H := total + list.top + list.bottom + 4;  (* polpo: all lines (it was 200, which cut them at larger fonts) *)
+		IF list.H > Display.Height - 20 THEN list.H := Display.Height - 20 END;
 		RETURN list
 	END ListDocs;
 
@@ -247,6 +256,9 @@ MODULE Finder;	(** portable *) (* ejz 3.1.95 / jm - adapted for ver 1.6 / ps ext
 				t.next := templates; templates := t
 			END;
 			COPY(name, t.docName);
+			t := dropped;  (* polpo: kept for the next UpdateTemplates *)
+			WHILE (t # NIL) & (t.name # name) DO t := t.next END;
+			IF t = NIL THEN NEW(t); COPY(name, t.name); COPY(name, t.docName); t.next := dropped; dropped := t END;
 			(*Registry.Set(FinderSection, name, name);
 			Texts.WriteString(W, "added "); Texts.Write(W, 22X); Texts.WriteString(W, name);
 			Texts.Write(W, 22X); Texts.WriteLn(W);*)
@@ -516,17 +528,56 @@ MODULE Finder;	(** portable *) (* ejz 3.1.95 / jm - adapted for ver 1.6 / ps ext
 	END UpdateTemplates;
 *)
 
+	(* polpo: the document of a template is there: a file, or the module of a (Module.Procedure) *)
+	PROCEDURE Present (VAR doc: ARRAY OF CHAR): BOOLEAN;
+	VAR mod: ARRAY 64 OF CHAR; i, j: INTEGER; f: Files.File;
+	BEGIN
+		IF doc[0] = "(" THEN
+			i := 1; j := 0;
+			WHILE (doc[i] # 0X) & (doc[i] # ".") & (j < LEN(mod) - 1) DO mod[j] := doc[i]; INC(i); INC(j) END;
+			mod[j] := 0X;
+			RETURN Modules.ThisMod(mod) # NIL
+		ELSE
+			f := Files.Old(doc);
+			IF f # NIL THEN Files.Close(f); RETURN TRUE END;
+			RETURN FALSE
+		END
+	END Present;
+
+	PROCEDURE Known (VAR doc: ARRAY OF CHAR): BOOLEAN;
+	VAR t: Template;
+	BEGIN
+		t := templates; WHILE (t # NIL) & (t.docName # doc) DO t := t.next END;
+		RETURN t # NIL
+	END Known;
+
+	PROCEDURE Named (VAR name: ARRAY OF CHAR): BOOLEAN;
+	VAR t: Template;
+	BEGIN
+		t := templates; WHILE (t # NIL) & (t.name # name) DO t := t.next END;
+		RETURN t # NIL
+	END Named;
+
+	(* polpo: an installed panel, X.Panel in share/ or tools/ of the root, becomes the template X *)
+	PROCEDURE PanelEntry (name: ARRAY OF CHAR; time, date, size: LONGINT; VAR flags: SET);
+	VAR base, label: ARRAY 64 OF CHAR; i, j, k: INTEGER;
+	BEGIN
+		i := 0; j := 0;
+		WHILE name[i] # 0X DO IF name[i] = "/" THEN j := i + 1 END; INC(i) END;
+		k := 0; WHILE (name[j] # 0X) & (k < LEN(base) - 1) DO base[k] := name[j]; INC(j); INC(k) END;
+		base[k] := 0X;
+		COPY(base, label); IF k > 6 THEN label[k - 6] := 0X END;  (* without .Panel *)
+		IF ~Known(base) & ~Named(label) THEN RegEnum(label, base) END
+	END PanelEntry;
+
 	(**
-		Reads the Gadgets.FinderTemplates section *)
+		Makes the list of templates: the entries of the Gadgets.FinderTemplates section that are
+		there, the installed panels, and the documents dropped on a finder *)
 	PROCEDURE UpdateTemplates*;
-	VAR s: Texts.Scanner;  i: LONGINT;  name: ARRAY 64 OF CHAR;
+	VAR s: Texts.Scanner;  i: LONGINT;  name: ARRAY 64 OF CHAR; mask: ARRAY 256 OF CHAR; t: Template;
 	BEGIN
 		templates := NIL;
 		Oberon.OpenScanner(s, "Gadgets.FinderTemplates");
-		IF s.class = Texts.Inval THEN
-			Texts.WriteString(W, "Oberon.Text - Gadgets.FinderTemplates not found");  Texts.WriteLn(W);
-			Texts.Append(Oberon.Log, W.buf)
-		END;
 		WHILE s.class IN {Texts.Name, Texts.String} DO
 			i := 0;
 			WHILE s.s[i] # 0X DO
@@ -537,16 +588,20 @@ MODULE Finder;	(** portable *) (* ejz 3.1.95 / jm - adapted for ver 1.6 / ps ext
 			IF (s.class = Texts.Char) & (s.c = "=") THEN
 				Texts.Scan(s);
 				IF (s.class = Texts.Name) OR (s.class = Texts.String) THEN
-					RegEnum(name, s.s);
+					IF Present(s.s) THEN RegEnum(name, s.s) END;
 					Texts.Scan(s)
 				END
 			ELSE s.class := Texts.Inval
 			END
-		END
+		END;
+		Root.Join("share/*.Panel", mask); FileDir.Enumerate(mask, {}, PanelEntry);
+		Root.Join("tools/*.Panel", mask); FileDir.Enumerate(mask, {}, PanelEntry);
+		t := dropped;
+		WHILE t # NIL DO IF ~Known(t.docName) THEN RegEnum(t.name, t.docName) END; t := t.next END
 	END UpdateTemplates;
 	
 BEGIN
-	Texts.OpenWriter(W);
+	Texts.OpenWriter(W); dropped := NIL;
 	NEW(pict); Pictures.Create(pict, 16, 16, 8);
 	UpdateTemplates;
 	NEW(methods);
