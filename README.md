@@ -1,8 +1,10 @@
 # gadgets-finder
 
 Finder for the gadgets of [polpo](https://github.com/polpo-system/polpo): a gadget that lists the
-open documents, to bring one to the front, and the templates of new documents (the section
-FinderTemplates of Oberon.Text), to open one.
+open documents, to bring one to the front, and the templates of new documents, to open one:
+the entries of the section FinderTemplates of Oberon.Text whose files are there, every installed
+panel (X.Panel in share/ or tools/), and Tools, a document listing the tool texts of the
+installed packages with their first lines, each one opened by a middle click.
 
 ```
 portia.Install gadgets-finder
@@ -13,6 +15,7 @@ portia.Install gadgets-finder
     Gadgets.Insert Finder.NewFrame ~    a finder at the caret
     Finder.Minimize                     (in the menu of a document) puts the document away into
                                         the list of the finder; click it there to get it back
+    Desktops.OpenDoc (Finder.NewToolsDoc) ~   the list of the tool texts (Tools in the finder)
 
 ## What is here
 

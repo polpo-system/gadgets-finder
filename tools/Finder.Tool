@@ -4,3 +4,5 @@ Finder (Emil Zeller) - a gadget that lists the open documents and the templates 
                                      front, a template (FinderTemplates in Oberon.Text) to open it
   Finder.Minimize                    (in the menu of a document) puts the document away into the
                                      list of the finder; click it there to get it back
+  Desktops.OpenDoc (Finder.NewToolsDoc) ~   the tool texts of the installed packages with their
+                                     first lines (the template Tools of the finder)

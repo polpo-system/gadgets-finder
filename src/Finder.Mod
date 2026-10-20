@@ -5,7 +5,8 @@ MODULE Finder;	(** portable *) (* ejz 3.1.95 / jm - adapted for ver 1.6 / ps ext
 
 	IMPORT
 		Input,  Objects, Fonts, Display, Printer, Display3, Printer3, Pictures, Viewers, Texts, Oberon, Effects,
-		Gadgets, Views, ListRiders, ListGadgets, Documents, Desktops, Files, Modules, FileDir, Root;
+		Gadgets, Views, ListRiders, ListGadgets, Documents, Desktops, Files, Modules, FileDir, Root,
+		TextGadgets, TextDocs;
 
 	CONST
 		ListModel = "ListModels.NewList";
@@ -38,6 +39,12 @@ MODULE Finder;	(** portable *) (* ejz 3.1.95 / jm - adapted for ver 1.6 / ps ext
 			open: BOOLEAN
 		END;
 
+		ToolName = POINTER TO ToolNameDesc;  (* polpo: a tool text of the root *)
+		ToolNameDesc = RECORD
+			name: ARRAY 64 OF CHAR;
+			next: ToolName
+		END;
+
 		FindMsg = RECORD (Display.FrameMsg)
 			desk: Desktops.DocViewer;
 			finder: Frame;
@@ -50,6 +57,7 @@ MODULE Finder;	(** portable *) (* ejz 3.1.95 / jm - adapted for ver 1.6 / ps ext
 		dropped: Template;  (* polpo: templates added by dropping a document on a finder, kept when the list is made anew *)
 		methods: ListGadgets.Method;
 		W: Texts.Writer;
+		tools: ToolName;  (* polpo: the tool texts, sorted by name, while the document Tools is made *)
 
 	PROCEDURE * FormatLine (F: ListGadgets.Frame; R: ListRiders.Rider; L: ListGadgets.Line);
 	VAR e: Entry;
@@ -570,9 +578,62 @@ MODULE Finder;	(** portable *) (* ejz 3.1.95 / jm - adapted for ver 1.6 / ps ext
 		IF ~Known(base) & ~Named(label) THEN RegEnum(label, base) END
 	END PanelEntry;
 
+	(* polpo: a tool text X.Tool in tools/ of the root, into the sorted list tools *)
+	PROCEDURE ToolEntry (name: ARRAY OF CHAR; time, date, size: LONGINT; VAR flags: SET);
+	VAR t, p, q: ToolName; i, j, k: INTEGER;
+	BEGIN
+		i := 0; j := 0;
+		WHILE name[i] # 0X DO IF name[i] = "/" THEN j := i + 1 END; INC(i) END;
+		NEW(t); k := 0;
+		WHILE (name[j] # 0X) & (k < LEN(t.name) - 1) DO t.name[k] := name[j]; INC(j); INC(k) END;
+		t.name[k] := 0X;
+		p := NIL; q := tools;
+		WHILE (q # NIL) & (q.name < t.name) DO p := q; q := q.next END;
+		t.next := q; IF p = NIL THEN tools := t ELSE p.next := t END
+	END ToolEntry;
+
+	(* the document Tools: every tool text with its first line (recipes, whose first line starts
+		with #, left out) *)
+	PROCEDURE LoadTools (D: Documents.Document);
+	VAR T, t: Texts.Text; R: Texts.Reader; main: TextGadgets.Frame; tn: ToolName; ch: CHAR; i: INTEGER;
+		mask: ARRAY 256 OF CHAR; line: ARRAY 100 OF CHAR;
+	BEGIN
+		tools := NIL; Root.Join("tools/*.Tool", mask); FileDir.Enumerate(mask, {}, ToolEntry);
+		NEW(T); Texts.Open(T, "");
+		Texts.WriteString(W, "The tool texts of the installed packages; a middle click on Desktops.OpenDoc opens one.");
+		Texts.WriteLn(W); Texts.WriteLn(W);
+		tn := tools;
+		WHILE tn # NIL DO
+			NEW(t); Texts.Open(t, tn.name); Texts.OpenReader(R, t, 0); Texts.Read(R, ch);
+			WHILE ~R.eot & (ch <= " ") DO Texts.Read(R, ch) END;  (* the first line that is not empty *)
+			i := 0;
+			WHILE ~R.eot & (ch # 0DX) & (ch # 0AX) & (i < LEN(line) - 1) DO
+				IF ch = 9X THEN ch := " " END;
+				line[i] := ch; INC(i); Texts.Read(R, ch)
+			END;
+			line[i] := 0X;
+			IF line[0] # "#" THEN
+				Texts.WriteString(W, "Desktops.OpenDoc "); Texts.WriteString(W, tn.name); Texts.Write(W, 9X);
+				Texts.WriteString(W, line); Texts.WriteLn(W)
+			END;
+			tn := tn.next
+		END;
+		tools := NIL; Texts.Append(T, W.buf);
+		NEW(main); TextGadgets.Init(main, T, FALSE);
+		COPY("Tools", D.name); Documents.Init(D, main)
+	END LoadTools;
+
+	(** Generator of the document Tools, the list of the tool texts (the template Tools) *)
+	PROCEDURE NewToolsDoc*;
+	VAR D: Documents.Document;
+	BEGIN
+		NEW(D); TextDocs.InitDoc(D); D.Load := LoadTools; Objects.NewObj := D
+	END NewToolsDoc;
+
 	(**
 		Makes the list of templates: the entries of the Gadgets.FinderTemplates section that are
-		there, the installed panels, and the documents dropped on a finder *)
+		there, the installed panels, Tools (the list of the tool texts) and the documents dropped
+		on a finder *)
 	PROCEDURE UpdateTemplates*;
 	VAR s: Texts.Scanner;  i: LONGINT;  name: ARRAY 64 OF CHAR; mask: ARRAY 256 OF CHAR; t: Template;
 	BEGIN
@@ -596,6 +657,7 @@ MODULE Finder;	(** portable *) (* ejz 3.1.95 / jm - adapted for ver 1.6 / ps ext
 		END;
 		Root.Join("share/*.Panel", mask); FileDir.Enumerate(mask, {}, PanelEntry);
 		Root.Join("tools/*.Panel", mask); FileDir.Enumerate(mask, {}, PanelEntry);
+		name := "Tools"; IF ~Named(name) THEN RegEnum(name, "(Finder.NewToolsDoc)") END;
 		t := dropped;
 		WHILE t # NIL DO IF ~Known(t.docName) THEN RegEnum(t.name, t.docName) END; t := t.next END
 	END UpdateTemplates;
