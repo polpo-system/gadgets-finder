@@ -578,6 +578,26 @@ MODULE Finder;	(** portable *) (* ejz 3.1.95 / jm - adapted for ver 1.6 / ps ext
 		IF ~Known(base) & ~Named(label) THEN RegEnum(label, base) END
 	END PanelEntry;
 
+	(* polpo: X.Finder in share/ or tools/ of the root, installed by a package, becomes the template X;
+		its first line is what Desktops.OpenDoc opens, e.g. "file://WebNavStart.html" (WebNavDocs.NewDoc) *)
+	PROCEDURE FinderEntry (name: ARRAY OF CHAR; time, date, size: LONGINT; VAR flags: SET);
+	VAR label: ARRAY 32 OF CHAR; doc: ARRAY 128 OF CHAR; f: Files.File; R: Files.Rider; ch: CHAR; i, j, k: INTEGER;
+	BEGIN
+		i := 0; j := 0;
+		WHILE name[i] # 0X DO IF name[i] = "/" THEN j := i + 1 END; INC(i) END;
+		k := 0; WHILE (name[j] # 0X) & (name[j] # ".") & (k < LEN(label) - 1) DO label[k] := name[j]; INC(j); INC(k) END;
+		label[k] := 0X;
+		f := Files.Old(name);
+		IF f # NIL THEN
+			Files.Set(R, f, 0); Files.Read(R, ch);
+			WHILE ~R.eof & (ch <= " ") DO Files.Read(R, ch) END;
+			k := 0;
+			WHILE ~R.eof & (ch # 0DX) & (ch # 0AX) & (k < LEN(doc) - 1) DO doc[k] := ch; INC(k); Files.Read(R, ch) END;
+			doc[k] := 0X; Files.Close(f);
+			IF (doc[0] # 0X) & ~Named(label) THEN RegEnum(label, doc) END
+		END
+	END FinderEntry;
+
 	(* polpo: a tool text X.Tool in tools/ of the root, into the sorted list tools *)
 	PROCEDURE ToolEntry (name: ARRAY OF CHAR; time, date, size: LONGINT; VAR flags: SET);
 	VAR t, p, q: ToolName; i, j, k: INTEGER;
@@ -632,8 +652,8 @@ MODULE Finder;	(** portable *) (* ejz 3.1.95 / jm - adapted for ver 1.6 / ps ext
 
 	(**
 		Makes the list of templates: the entries of the Gadgets.FinderTemplates section that are
-		there, the installed panels, Tools (the list of the tool texts) and the documents dropped
-		on a finder *)
+		there, the installed panels, the entries of packages (X.Finder files), Tools (the list of
+		the tool texts) and the documents dropped on a finder *)
 	PROCEDURE UpdateTemplates*;
 	VAR s: Texts.Scanner;  i: LONGINT;  name: ARRAY 64 OF CHAR; mask: ARRAY 256 OF CHAR; t: Template;
 	BEGIN
@@ -657,6 +677,8 @@ MODULE Finder;	(** portable *) (* ejz 3.1.95 / jm - adapted for ver 1.6 / ps ext
 		END;
 		Root.Join("share/*.Panel", mask); FileDir.Enumerate(mask, {}, PanelEntry);
 		Root.Join("tools/*.Panel", mask); FileDir.Enumerate(mask, {}, PanelEntry);
+		Root.Join("share/*.Finder", mask); FileDir.Enumerate(mask, {}, FinderEntry);
+		Root.Join("tools/*.Finder", mask); FileDir.Enumerate(mask, {}, FinderEntry);
 		name := "Tools"; IF ~Named(name) THEN RegEnum(name, "(Finder.NewToolsDoc)") END;
 		t := dropped;
 		WHILE t # NIL DO IF ~Known(t.docName) THEN RegEnum(t.name, t.docName) END; t := t.next END

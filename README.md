@@ -3,8 +3,13 @@
 Finder for the gadgets of [polpo](https://github.com/polpo-system/polpo): a gadget that lists the
 open documents, to bring one to the front, and the templates of new documents, to open one:
 the entries of the section FinderTemplates of Oberon.Text whose files are there, every installed
-panel (X.Panel in share/ or tools/), and Tools, a document listing the tool texts of the
-installed packages with their first lines, each one opened by a middle click.
+panel (X.Panel in share/ or tools/), the entries packages install, and Tools, a document listing
+the tool texts of the installed packages with their first lines, each one opened by a middle click.
+
+A package gets an entry X in the finder by installing a file X.Finder in share/: its first line is
+what Desktops.OpenDoc opens, for example (gadgets-webnav, share/WebNavigator.Finder)
+
+    "file://WebNavStart.html" (WebNavDocs.NewDoc)
 
 ```
 portia.Install gadgets-finder
